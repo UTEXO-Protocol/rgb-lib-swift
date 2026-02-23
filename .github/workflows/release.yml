@@ -1,0 +1,155 @@
+name: Build and Release
+
+on:
+  repository_dispatch:
+    types: [rgb-lib-release]
+
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish (e.g., 0.3.0-beta.5)'
+        required: true
+        type: string
+
+jobs:
+  build-and-release:
+    name: Build XCFramework and Release
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: utexo-master
+          submodules: recursive
+
+      - name: Get version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" == "repository_dispatch" ]; then
+            VERSION="${{ github.event.client_payload.version }}"
+            VERSION="${VERSION#v}"
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+          else
+            echo "version=${{ inputs.version }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Update submodule to utexo-master
+        run: |
+          cd rgb-lib
+          git fetch origin utexo-master
+          git checkout origin/utexo-master
+          cd ..
+
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          target: aarch64-apple-ios,x86_64-apple-ios,aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: Install iOS simulator target
+        run: rustup target add aarch64-apple-ios-sim
+
+      - name: Generate bindings and XCFramework
+        run: ./generate.sh
+
+      - name: Compute checksum
+        id: checksum
+        run: |
+          CHECKSUM=$(swift package compute-checksum rgb_libFFI.xcframework.zip)
+          echo "checksum=$CHECKSUM" >> $GITHUB_OUTPUT
+          echo "Checksum: $CHECKSUM"
+
+      - name: Update Package.swift
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          CHECKSUM="${{ steps.checksum.outputs.checksum }}"
+          REPO_URL="https://github.com/UTEXO-Protocol/rgb-lib-swift/releases/download/${VERSION}/rgb_libFFI.xcframework.zip"
+          
+          cat > Package.swift << 'SWIFT_EOF'
+          // swift-tools-version:5.5
+          import PackageDescription
+          
+          let package = Package(
+              name: "RgbLib",
+              platforms: [
+                  .macOS(.v12),
+                  .iOS(.v15)
+              ],
+              products: [
+                  .library(
+                      name: "RgbLib",
+                      targets: ["rgb_libFFI", "RgbLib"]),
+              ],
+              dependencies: [],
+              targets: [
+                  .binaryTarget(
+                     name: "rgb_libFFI",
+          SWIFT_EOF
+          
+          # Use sed to avoid heredoc interpolation issues
+          sed -i '' "s|SWIFT_EOF||g" Package.swift
+          
+          cat > Package.swift << EOF
+          // swift-tools-version:5.5
+          import PackageDescription
+          
+          let package = Package(
+              name: "RgbLib",
+              platforms: [
+                  .macOS(.v12),
+                  .iOS(.v15)
+              ],
+              products: [
+                  .library(
+                      name: "RgbLib",
+                      targets: ["rgb_libFFI", "RgbLib"]),
+              ],
+              dependencies: [],
+              targets: [
+                  .binaryTarget(
+                     name: "rgb_libFFI",
+                     url: "$REPO_URL",
+                     checksum: "$CHECKSUM"),
+                  .target(
+                      name: "RgbLib",
+                      dependencies: ["rgb_libFFI"]),
+              ]
+          )
+          EOF
+
+      - name: Commit updated Package.swift
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add Package.swift Sources/
+          git commit -m "release: update Package.swift for v${{ steps.version.outputs.version }}" || true
+          git tag "${{ steps.version.outputs.version }}"
+          git push origin utexo-master --tags
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          name: Release ${{ steps.version.outputs.version }}
+          body: |
+            ## rgb-lib-swift ${{ steps.version.outputs.version }}
+            
+            Swift bindings for rgb-lib.
+            
+            ### Installation (Swift Package Manager)
+            Add this repository URL in Xcode:
+            ```
+            https://github.com/UTEXO-Protocol/rgb-lib-swift
+            ```
+            Select version `${{ steps.version.outputs.version }}`
+            
+            ### Platforms
+            - iOS (arm64)
+            - iOS Simulator (arm64, x86_64)
+            - macOS (arm64, x86_64)
+          draft: false
+          prerelease: ${{ contains(steps.version.outputs.version, 'beta') || contains(steps.version.outputs.version, 'alpha') }}
+          files: rgb_libFFI.xcframework.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
