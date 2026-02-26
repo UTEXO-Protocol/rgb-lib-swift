@@ -9,10 +9,7 @@ XCFRAMEWORK_PATH="rgb_libFFI.xcframework"
 rm -rf "${XCFRAMEWORK_PATH:?}/*/"
 
 echo "Installing/updating rust components..."
-rustup install nightly-2023-04-10-x86_64-apple-darwin
-rustup component add rust-src --toolchain nightly-2023-04-10-x86_64-apple-darwin
-rustup target add aarch64-apple-ios x86_64-apple-ios
-rustup target add aarch64-apple-ios-sim --toolchain nightly-2023-04-10
+rustup target add aarch64-apple-ios x86_64-apple-ios aarch64-apple-ios-sim
 rustup target add aarch64-apple-darwin x86_64-apple-darwin
 
 echo "Generating Swift bindings..."
@@ -35,10 +32,6 @@ for target in "${TARGET_TRIPLES[@]}"; do
     IPHONEOS_DEPLOYMENT_TARGET=16.0 CFLAGS="-mios-version-min=16.0" \
       CXXFLAGS="-mios-version-min=16.0" \
       cargo build "${MANIFEST_PATH[@]}" --target "$target"
-  elif [ "$target" == "aarch64-apple-ios" ]; then
-    # special build for M1 ios simulator
-    cargo +nightly build -Z build-std \
-      "${MANIFEST_PATH[@]}" --target "$target"
   else
     cargo build "${MANIFEST_PATH[@]}" --target "$target"
   fi
