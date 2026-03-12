@@ -17,7 +17,7 @@ let package = Package(
         .binaryTarget(
            name: "rgb_libFFI",
            url: "https://github.com/UTEXO-Protocol/rgb-lib-swift/releases/download/0.3.0-beta.15/rgb_libFFI.xcframework.zip",
-           checksum: "e04adf6256b3fd779686e1f7040b1eb243ac1e5b2ad5142c580088c672eb5ec7"),
+           checksum: "4de5a680eec10962681c4c737bf1661370ac3d0cc87471c231c3c1dad959354e"),
         .target(
             name: "RgbLib",
             dependencies: ["rgb_libFFI"]),
