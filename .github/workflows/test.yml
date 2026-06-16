@@ -1,0 +1,110 @@
+name: Test Library
+
+on:
+  repository_dispatch:
+    types: [rgb-lib-release]
+
+  workflow_run:
+    workflows: ["Build and Release"]
+    types:
+      - completed
+
+  workflow_dispatch:
+    inputs:
+      bitcoin_network:
+        description: 'Bitcoin network (signet, testnet, regtest)'
+        required: false
+        default: 'signet'
+        type: string
+
+  push:
+    branches:
+      - utexo-master
+    paths:
+      - 'Sources/**'
+      - 'Tests/**'
+      - 'Package.swift'
+
+  pull_request:
+    branches:
+      - utexo-master
+
+jobs:
+  test:
+    name: Test (${{ matrix.platform }})
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macOS
+            destination: "platform=macOS"
+          - platform: iOS-simulator
+            destination: "platform=iOS Simulator,name=iPhone 15"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: utexo-master
+          submodules: recursive
+
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          target: aarch64-apple-ios,x86_64-apple-ios,aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: Install iOS simulator target
+        run: rustup target add aarch64-apple-ios-sim
+
+      - name: Generate bindings and XCFramework
+        run: ./generate.sh
+
+      - name: Build (local XCFramework)
+        run: |
+          # Override Package.swift to use local XCFramework instead of remote URL
+          cat > Package.swift << 'EOF'
+          // swift-tools-version:5.5
+          import PackageDescription
+
+          let package = Package(
+              name: "RgbLib",
+              platforms: [
+                  .macOS(.v12),
+                  .iOS(.v15)
+              ],
+              products: [
+                  .library(
+                      name: "RgbLib",
+                      targets: ["rgb_libFFI", "RgbLib"]),
+              ],
+              dependencies: [],
+              targets: [
+                  .binaryTarget(
+                      name: "rgb_libFFI",
+                      path: "rgb_libFFI.xcframework"),
+                  .target(
+                      name: "RgbLib",
+                      dependencies: ["rgb_libFFI"]),
+              ]
+          )
+          EOF
+
+          # Unzip if generate.sh produced a zip
+          if [ -f rgb_libFFI.xcframework.zip ] && [ ! -d rgb_libFFI.xcframework ]; then
+            unzip -o rgb_libFFI.xcframework.zip
+          fi
+
+          swift build
+
+      - name: Run tests
+        env:
+          BITCOIN_NETWORK: ${{ inputs.bitcoin_network || 'signet' }}
+          MNEMONIC: ${{ secrets.TEST_MNEMONIC }}
+          ACCOUNT_XPUB_VANILLA: ${{ secrets.TEST_ACCOUNT_XPUB_VANILLA }}
+          ACCOUNT_XPUB_COLORED: ${{ secrets.TEST_ACCOUNT_XPUB_COLORED }}
+          MASTER_FINGERPRINT: ${{ secrets.TEST_MASTER_FINGERPRINT }}
+          INDEXER_URL: ${{ secrets.TEST_INDEXER_URL }}
+        run: |
+          swift test --destination '${{ matrix.destination }}'

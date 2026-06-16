@@ -1,0 +1,44 @@
+name: Test Library (tag)
+
+on:
+  push:
+    tags:
+      - '*'
+      # Swift tags have no 'v' prefix per your release.yml
+
+jobs:
+  test:
+    name: Test tag (${{ matrix.platform }})
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macOS
+            destination: "platform=macOS"
+          - platform: iOS-simulator
+            destination: "platform=iOS Simulator,name=iPhone 15"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          submodules: recursive
+
+      - name: Resolve SPM dependencies (published Package.swift)
+        run: swift package resolve
+
+      - name: Build
+        run: swift build
+
+      - name: Run tests
+        env:
+          BITCOIN_NETWORK: signet
+          MNEMONIC: ${{ secrets.TEST_MNEMONIC }}
+          ACCOUNT_XPUB_VANILLA: ${{ secrets.TEST_ACCOUNT_XPUB_VANILLA }}
+          ACCOUNT_XPUB_COLORED: ${{ secrets.TEST_ACCOUNT_XPUB_COLORED }}
+          MASTER_FINGERPRINT: ${{ secrets.TEST_MASTER_FINGERPRINT }}
+          INDEXER_URL: ${{ secrets.TEST_INDEXER_URL }}
+        run: |
+          swift test --destination '${{ matrix.destination }}'
