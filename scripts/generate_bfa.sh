@@ -24,9 +24,9 @@ lipo -create "$native/aarch64-apple-ios-sim/release/librgblibuniffi.a" \
   "$native/x86_64-apple-ios/release/librgblibuniffi.a" -output "$output/ios-simulator/librgblibuniffi.a"
 lipo -create "$native/aarch64-apple-darwin/release/librgblibuniffi.a" \
   "$native/x86_64-apple-darwin/release/librgblibuniffi.a" -output "$output/macos/librgblibuniffi.a"
-lipo -verify_arch arm64 "$native/aarch64-apple-ios/release/librgblibuniffi.a"
-lipo -verify_arch arm64 x86_64 "$output/ios-simulator/librgblibuniffi.a"
-lipo -verify_arch arm64 x86_64 "$output/macos/librgblibuniffi.a"
+lipo "$native/aarch64-apple-ios/release/librgblibuniffi.a" -verify_arch arm64
+lipo "$output/ios-simulator/librgblibuniffi.a" -verify_arch arm64 x86_64
+lipo "$output/macos/librgblibuniffi.a" -verify_arch arm64 x86_64
 
 xcodebuild -create-xcframework \
   -library "$native/aarch64-apple-ios/release/librgblibuniffi.a" -headers "$output/headers" \
