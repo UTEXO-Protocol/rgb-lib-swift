@@ -1,3 +1,6 @@
 /.swiftpm
 /rgb_libFFI.xcframework.zip
 /rgb_libFFI.xcframework/*/
+/bfa-build
+/release-assets
+**/__pycache__/

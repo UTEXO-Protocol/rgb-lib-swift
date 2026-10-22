@@ -1,0 +1,144 @@
+name: BFA Apple Release
+
+on:
+  repository_dispatch:
+    types: [rgb-lib-bfa-release]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Package version (e.g. 0.3.0-beta.7-bfa)'
+        required: true
+        type: string
+      source_sha:
+        description: 'Full 40-character rgb-lib-bfa commit SHA (same as Android)'
+        required: true
+        type: string
+      publish:
+        description: 'Publish to public GitHub Releases and Swift Package Manager'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bfa-apple-${{ github.event.client_payload.version || inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 120
+    outputs:
+      version: ${{ steps.input.outputs.version }}
+      source_sha: ${{ steps.input.outputs.source_sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Test release validation and packaging
+        run: python -m unittest discover -s scripts -p 'test_*.py' -v
+      - name: Validate release inputs
+        id: input
+        env:
+          VERSION_INPUT: ${{ github.event.client_payload.version || inputs.version }}
+          SOURCE_SHA_INPUT: ${{ github.event.client_payload.source_sha || inputs.source_sha }}
+        run: python scripts/bfa_release.py validate
+      - name: Checkout private BFA source
+        uses: actions/checkout@v4
+        with:
+          repository: UTEXO-Protocol/rgb-lib-bfa
+          ref: ${{ steps.input.outputs.source_sha }}
+          token: ${{ secrets.BFA_SOURCE_READ_TOKEN }}
+          path: rgb-lib
+          persist-credentials: false
+      - name: Verify source and set build parameters
+        env:
+          SOURCE_SHA: ${{ steps.input.outputs.source_sha }}
+          RELEASE_VERSION: ${{ steps.input.outputs.version }}
+        run: |
+          test "$(git -C rgb-lib rev-parse HEAD)" = "$SOURCE_SHA"
+          echo "RELEASE_VERSION=$RELEASE_VERSION" >> "$GITHUB_ENV"
+          echo "SOURCE_SHA=$SOURCE_SHA" >> "$GITHUB_ENV"
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: '1.94.1'
+          target: aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios,aarch64-apple-darwin,x86_64-apple-darwin
+      - name: Build XCFramework and compile Swift bindings for all slices
+        run: bash scripts/generate_bfa.sh
+      - name: Package source metadata and Swift distribution
+        run: |
+          python scripts/bfa_release.py metadata apple bfa-build/version.json
+          python scripts/package_bfa.py
+          python scripts/bfa_release.py checksums release-assets
+          (cd release-assets && shasum -a 256 --check SHA256SUMS)
+          swift package dump-package > /dev/null
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bfa-apple-${{ steps.input.outputs.version }}
+          path: |
+            release-assets/
+            Package.swift
+            Sources/RgbLib/RgbLib.swift
+            bfa-version.json
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    if: github.event_name == 'repository_dispatch' || inputs.publish
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    env:
+      RELEASE_VERSION: ${{ needs.build.outputs.version }}
+      SOURCE_SHA: ${{ needs.build.outputs.source_sha }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require a public destination and an unused release version
+        run: |
+          test "$(gh api "repos/$GITHUB_REPOSITORY" --jq .private)" = false
+          python3 - <<'PY'
+          import json, os, urllib.request
+          url = f"https://api.github.com/repos/{os.environ['GITHUB_REPOSITORY']}/git/matching-refs/tags/{os.environ['RELEASE_VERSION']}"
+          request = urllib.request.Request(url, headers={"Authorization": f"Bearer {os.environ['GH_TOKEN']}"})
+          refs = json.load(urllib.request.urlopen(request))
+          assert not any(ref['ref'] == f"refs/tags/{os.environ['RELEASE_VERSION']}" for ref in refs), 'Release tag already exists; use a new version'
+          PY
+      - uses: actions/download-artifact@v4
+        with:
+          name: bfa-apple-${{ needs.build.outputs.version }}
+          path: .
+      - name: Verify downloaded assets
+        run: (cd release-assets && sha256sum --check SHA256SUMS)
+      - name: Create SPM release commit and tag
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add Package.swift Sources/RgbLib/RgbLib.swift bfa-version.json
+          git commit -m "release: BFA Swift $RELEASE_VERSION ($SOURCE_SHA)"
+          git tag "$RELEASE_VERSION"
+          git push origin "refs/tags/$RELEASE_VERSION"
+      - name: Publish binary and complete Swift package
+        run: |
+          cat > release-notes.md <<EOF
+          Swift bindings for rgb-lib-bfa, built from commit $SOURCE_SHA.
+          iOS 16+ (arm64), iOS Simulator (arm64, x86_64), macOS 12+ (arm64, x86_64).
+          SPM: use this repository with exact version $RELEASE_VERSION.
+          For CocoaPods/manual integration download rgb-lib-bfa-swift-$RELEASE_VERSION.zip,
+          containing rgb_libFFI.xcframework and Sources/RgbLib/RgbLib.swift.
+          See version.json and SHA256SUMS for provenance and integrity.
+          EOF
+          gh release create "$RELEASE_VERSION" release-assets/* --verify-tag \
+            --title "BFA Apple $RELEASE_VERSION" --prerelease --notes-file release-notes.md
+      - name: Verify anonymous download
+        env:
+          GH_TOKEN: ''
+        run: |
+          curl --fail --location --retry 3 "https://github.com/$GITHUB_REPOSITORY/releases/download/$RELEASE_VERSION/rgb-lib-bfa-swift-$RELEASE_VERSION.zip" -o /tmp/public.zip
+          cmp /tmp/public.zip "release-assets/rgb-lib-bfa-swift-$RELEASE_VERSION.zip"
