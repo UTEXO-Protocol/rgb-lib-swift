@@ -68,7 +68,9 @@ jobs:
           toolchain: '1.94.1'
           target: aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios,aarch64-apple-darwin,x86_64-apple-darwin
       - name: Build XCFramework and compile Swift bindings for all slices
-        run: bash scripts/generate_bfa.sh
+        env:
+          BFA_SOURCE_READ_TOKEN: ${{ secrets.BFA_SOURCE_READ_TOKEN }}
+        run: bash scripts/with_cargo_auth.sh bash scripts/generate_bfa.sh
       - name: Package source metadata and Swift distribution
         run: |
           python scripts/bfa_release.py metadata apple bfa-build/version.json

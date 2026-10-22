@@ -64,7 +64,11 @@ Use exactly the same version and source SHA as the Android BFA release.
    `repository_dispatch` events. A manual run can select a feature branch after
    GitHub has registered the workflow.
 2. Add `BFA_SOURCE_READ_TOKEN`, with read-only Contents access to the private
-   `UTEXO-Protocol/rgb-lib-bfa` repository.
+   `UTEXO-Protocol/rgb-lib-bfa` repository and the Git dependencies:
+   `UTEXO-Protocol/rgb-consensus-s-bfa`, `UTEXO-Protocol/rgb-ops-s-bfa`, and
+   `UTEXO-Protocol/rgb-schemas-s-bfa`. Approve the token for the organization if
+   its access policy requires it. The ordinary Swift release workflow also needs
+   this secret when its rgb-lib revision uses these private dependencies.
 3. Run `BFA Apple Release` with `version`, `source_sha`, and `publish=false`
    (default). Inspect the build artifact and test integration before publishing.
 4. Run with `publish=true`, or enable automatic dispatch in rgb-lib-bfa after
@@ -75,6 +79,13 @@ The build pins Rust 1.94.1, uses the committed Cargo lockfile, builds release
 binaries, and compiles/links the generated Swift wrapper against all five target
 architectures. Supported platforms: iOS 16+ arm64, iOS Simulator arm64/x86_64,
 and macOS 12+ arm64/x86_64. Version metadata records the Xcode version used.
+
+Both workflows fetch Cargo Git dependencies through the Git CLI with a temporary
+credential helper scoped to the three dependency repositories above. The token
+is provided only to the build step and is not saved in Git configuration, URLs,
+or artifacts. Checkout authentication alone does not authenticate Cargo's separate
+dependency clones. If fetching still fails, verify the token's repository access
+before changing the pinned dependency revisions.
 
 The GitHub Release contains:
 

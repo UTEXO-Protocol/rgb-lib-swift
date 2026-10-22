@@ -51,7 +51,9 @@ jobs:
         run: rustup target add aarch64-apple-ios-sim
 
       - name: Generate bindings and XCFramework
-        run: ./generate.sh
+        env:
+          BFA_SOURCE_READ_TOKEN: ${{ secrets.BFA_SOURCE_READ_TOKEN }}
+        run: bash scripts/with_cargo_auth.sh ./generate.sh
 
       - name: Compute checksum
         id: checksum
