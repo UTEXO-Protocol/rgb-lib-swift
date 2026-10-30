@@ -21,7 +21,7 @@ class CargoAuthTests(unittest.TestCase):
             )
 
     def test_git_authenticates_each_private_dependency(self):
-        for repo in ('rgb-consensus-s-bfa', 'rgb-ops-s-bfa', 'rgb-schemas-s-bfa'):
+        for repo in ('rgb-consensus-s-bfa', 'rgb-ops-s-bfa', 'rgb-api-s-bfa', 'rgb-schemas-s-bfa'):
             for suffix in ('', '.git'):
                 with self.subTest(repo=repo, suffix=suffix):
                     result = self.run_wrapped(
@@ -31,6 +31,28 @@ class CargoAuthTests(unittest.TestCase):
                     self.assertEqual(result.returncode, 0)
                     self.assertIn('username=x-access-token\n', result.stdout)
                     self.assertIn(f'password={TEST_TOKEN}\n', result.stdout)
+
+    def test_upstream_ssh_urls_resolve_to_utexo_mirrors_without_network(self):
+        for repo in ('rgb-consensus', 'rgb-ops', 'rgb-api', 'rgb-schemas'):
+            with self.subTest(repo=repo):
+                result = self.run_wrapped([
+                    'git', 'ls-remote', '--get-url',
+                    f'ssh://git@github.com/rgb-tools-devs/{repo}.git',
+                ])
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stdout.strip(), f'https://github.com/UTEXO-Protocol/{repo}-s-bfa.git')
+                self.assertNotIn(TEST_TOKEN, result.stdout + result.stderr)
+
+    def test_unrelated_upstream_is_not_rewritten(self):
+        url = 'ssh://git@github.com/rgb-tools-devs/unrelated.git'
+        result = self.run_wrapped(['git', 'ls-remote', '--get-url', url])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), url)
+
+    def test_git_config_does_not_contain_token(self):
+        result = self.run_wrapped(['git', 'config', '--list'])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn(TEST_TOKEN, result.stdout + result.stderr)
 
     def test_unrelated_urls_do_not_receive_token(self):
         for url in (

@@ -23,4 +23,12 @@ export GIT_CONFIG_VALUE_1="!bash \"$script_dir/cargo_git_credential.sh\""
 export GIT_CONFIG_KEY_2=credential.https://github.com.useHttpPath
 export GIT_CONFIG_VALUE_2=true
 
+# Keep Cargo's pinned source identity; only change Git's transport to our mirrors.
+# Credentials are supplied by the scoped helper, never embedded in these URLs.
+for repo in rgb-consensus rgb-ops rgb-api rgb-schemas; do
+  export "GIT_CONFIG_KEY_${GIT_CONFIG_COUNT}=url.https://github.com/UTEXO-Protocol/${repo}-s-bfa.git.insteadOf"
+  export "GIT_CONFIG_VALUE_${GIT_CONFIG_COUNT}=ssh://git@github.com/rgb-tools-devs/${repo}.git"
+  GIT_CONFIG_COUNT=$((GIT_CONFIG_COUNT + 1))
+done
+
 exec "$@"
