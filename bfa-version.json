@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "version": "0.3.0-beta.7-upstream-dev-bfa.8-bfa",
+  "source_repository": "UTEXO-Protocol/rgb-lib-bfa",
+  "source_commit": "cafe66e49d58038a69dd05f8065e3fe96a9d1601",
+  "source_version": "0.3.0-beta.7",
+  "source_lock_sha256": "dc5929ad5fd882e6021b501e4268cac69f53575b1ae054376afed7acb54afe36",
+  "bindings_repository": "UTEXO-Protocol/rgb-lib-swift",
+  "bindings_commit": "5caf313bddd54dd9bf62093d2030aa9b36736bcd",
+  "build_profile": "release",
+  "rust_version": "rustc 1.94.1 (e408947bf 2026-03-25)",
+  "platform": "apple",
+  "targets": [
+    "aarch64-apple-ios",
+    "aarch64-apple-ios-sim",
+    "x86_64-apple-ios",
+    "aarch64-apple-darwin",
+    "x86_64-apple-darwin"
+  ],
+  "workflow_run": "https://github.com/UTEXO-Protocol/rgb-lib-swift/actions/runs/43444825966",
+  "min_ios_version": "16.0",
+  "min_macos_version": "12.0",
+  "xcode": "Xcode 16.4\nBuild version 16F6"
+}
